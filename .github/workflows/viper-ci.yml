@@ -88,11 +88,10 @@ jobs:
           fi
           sha256sum rego/gold_rules.rego | tee rego-digest.txt
 
-      # 👇 ส่วนที่เพิ่มใหม่: OPA Eval และ Artifact Digest 👇
       - name: OPA Eval (Policy Decision Verification)
         run: |
-          # ต้องมีไฟล์ examples/opa_input.json ใน Repo (คุณสร้างไว้แล้ว)
-          opa eval --data rego/gold_rules.rego --input examples/opa_input.json "data.gold_rules.allow_release" > opa-eval-result.json
+          # อัปเดต Query ให้ตรงกับ Package 'gold' และ Rule 'allow' ใหม่
+          opa eval --data rego/gold_rules.rego --input examples/opa_input.json "data.gold.allow" > opa-eval-result.json
           cat opa-eval-result.json
           # ตรวจสอบว่า Output ถูกต้อง (Fail-closed ถ้าไม่ใช่ true)
           grep -q "true" opa-eval-result.json || (echo "Policy denied or invalid output" && exit 1)
@@ -102,7 +101,6 @@ jobs:
           # ผูก Digest ของ Artifacts เพื่อตรวจสอบย้อนหลัง
           sha256sum rego/gold_rules.rego opa-check.log opa-eval-result.json > artifact-digest.txt
           cat artifact-digest.txt
-      # 👆 จบส่วนที่เพิ่มใหม่ 👆
 
       - name: Upload compiler evidence
         if: always()
