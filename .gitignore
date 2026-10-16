@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.pyo
+*.zip
+.config/
+sample_data/
+.ipynb_checkpoints/
