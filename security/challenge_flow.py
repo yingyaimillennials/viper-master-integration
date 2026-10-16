@@ -1,9 +1,22 @@
-from identity_audit import ChallengeStore, AuditLedger
-from ed25519_sign import sign, verify
+"""F-03: Challenge-response nonce flow (prevents replay)."""
+import secrets
+from datetime import datetime, timezone
 
-def challenge_response(reg, cs, ledger, key_id, priv, action="link"):
-    challenge = cs.create()
-    sig = sign(priv, challenge.encode())
-    ok = cs.verify(challenge) and verify(reg, key_id, challenge, sig)
-    ledger.append({"action": action, "key_id": key_id, "ok": ok})
-    return {"challenge": challenge, "ok": ok}
+
+class ChallengeStore:
+    def __init__(self):
+            self._challenges = {}
+
+                def issue(self, subject):
+                        nonce = secrets.token_urlsafe(32)
+                                self._challenges[nonce] = {
+                                            "subject": subject,
+                                                        "issued_at": datetime.now(timezone.utc).isoformat(),
+                                                                }
+                                                                        return nonce
+
+                                                                            def consume(self, nonce, subject):
+                                                                                    entry = self._challenges.pop(nonce, None)
+                                                                                            if entry is None:
+                                                                                                        return False
+                                                                                                                return entry["subject"] == subject

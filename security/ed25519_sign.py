@@ -1,23 +1,39 @@
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+"""F-02: Ed25519 sign/verify."""
+import base64
+import json
+
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
-from identity_audit import TrustedKeyRegistry
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-def generate_keypair():
-    sk = Ed25519PrivateKey.generate()
-    priv = sk.private_bytes(serialization.Encoding.Raw, serialization.PrivateFormat.Raw, serialization.NoEncryption())
-    pub = sk.public_key().public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
-    return priv, pub
 
-def sign(priv, msg):
-    sk = Ed25519PrivateKey.from_private_bytes(priv)
-    return sk.sign(msg if isinstance(msg, bytes) else msg.encode())
+def _canonical(obj):
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
 
-def verify(reg, key_id, msg, sig):
-    if not reg.is_trusted(key_id):
-        return False
-    try:
-        pk = Ed25519PublicKey.from_public_bytes(bytes.fromhex(reg.keys[key_id]))
-        pk.verify(sig, msg if isinstance(msg, bytes) else msg.encode())
-        return True
-    except Exception:
-        return False
+
+    def generate_keypair():
+        key = Ed25519PrivateKey.generate()
+            priv = key.private_bytes(
+                    serialization.Encoding.PEM,
+                            serialization.PrivateFormat.PKCS8,
+                                    serialization.NoEncryption(),
+                                        )
+                                            pub = key.public_key().public_bytes(
+                                                    serialization.Encoding.PEM,
+                                                            serialization.PublicFormat.SubjectPublicKeyInfo,
+                                                                )
+                                                                    return priv, pub
+
+
+                                                                    def sign(payload, private_pem):
+                                                                        key = serialization.load_pem_private_key(private_pem, password=None)
+                                                                            return base64.b64encode(key.sign(_canonical(payload))).decode()
+
+
+                                                                            def verify(payload, signature_b64, public_pem):
+                                                                                pub = serialization.load_pem_public_key(public_pem)
+                                                                                    try:
+                                                                                            pub.verify(base64.b64decode(signature_b64), _canonical(payload))
+                                                                                                    return True
+                                                                                                        except InvalidSignature:
+                                                                                                                return False

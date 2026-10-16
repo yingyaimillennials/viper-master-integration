@@ -1,26 +1,48 @@
-import re, json, sys
-TOKEN = re.compile(r'rule\s+"([^"]+)"\s*\{(.*?)\}', re.S)
-def parse(t):
+"""Compile gold_rules.dsl to Rego policy."""
+import re
+import sys
+from pathlib import Path
+
+
+def parse_dsl(text):
     rules = []
-    for m in TOKEN.finditer(t):
-        name, body = m.group(1), m.group(2)
-        conds = [c.group(1).strip() for c in re.finditer(r'(?:when|and)\s+([^\n]+)', body)]
-        rules.append({"name": name, "conditions": conds})
-    return rules
+        for line in text.splitlines():
+                line = line.strip()
+                        if not line or line.startswith("#"):
+                                    continue
+                                            match = re.match(r"^(\w+)\s+when\s+(.+)$", line)
+                                                    if match:
+                                                                rules.append({"name": match.group(1), "condition": match.group(2).strip()})
+                                                                    return rules
 
-def compile_rego(rules):
-    out = ["package viper.gold", "", "all_gates_pass {", "  every g in input.gates { g == \"PASS\" }", "}", ""]
-    for r in rules:
-        rn = r["name"].replace("-", "_")
-        out.append(rn + " {")
-        for c in r["conditions"]:
-            c = c.replace("evidence.", "input.evidence.").replace("score.", "input.score.")
-            c = c.replace("all gates == PASS", "all_gates_pass")
-            out.append("  " + c)
-        out.append("}")
-    return "\n".join(out)
 
-if __name__ == "__main__":
-    rules = parse(open(sys.argv[1]).read())
-    open(sys.argv[2], "w").write(compile_rego(rules))
-    print(json.dumps({"rules_parsed": len(rules)}))
+                                                                    def emit_rego(rules, package="gold"):
+                                                                        lines = [
+                                                                                "package " + package,
+                                                                                        "",
+                                                                                                "default allow := false",
+                                                                                                        "",
+                                                                                                            ]
+                                                                                                                for rule in rules:
+                                                                                                                        lines.append("allow if {")
+                                                                                                                                lines.append("    " + rule["condition"])
+                                                                                                                                        lines.append("}")
+                                                                                                                                                lines.append("")
+                                                                                                                                                    return "\n".join(lines)
+
+
+                                                                                                                                                    def main(argv):
+                                                                                                                                                        if len(argv) != 3:
+                                                                                                                                                                print("usage: dsl_to_rego.py <input.dsl> <output.rego>", file=sys.stderr)
+                                                                                                                                                                        return 2
+                                                                                                                                                                            src = Path(argv[1])
+                                                                                                                                                                                dst = Path(argv[2])
+                                                                                                                                                                                    rules = parse_dsl(src.read_text(encoding="utf-8"))
+                                                                                                                                                                                        dst.parent.mkdir(parents=True, exist_ok=True)
+                                                                                                                                                                                            dst.write_text(emit_rego(rules), encoding="utf-8")
+                                                                                                                                                                                                print("compiled " + str(len(rules)) + " rules to " + str(dst))
+                                                                                                                                                                                                    return 0
+
+
+                                                                                                                                                                                                    if __name__ == "__main__":
+                                                                                                                                                                                                        sys.exit(main(sys.argv))
