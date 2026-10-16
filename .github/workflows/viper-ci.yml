@@ -94,4 +94,6 @@ jobs:
         with:
           name: compiler-policy-evidence
           path: |
-            # ตรวจสอบ path ที่ต้องการอัปโหลดตรงนี้ด้วยนะครับ
+            rego/gold_rules.rego
+            opa-check.log
+            rego-digest.txt
