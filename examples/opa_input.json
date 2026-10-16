@@ -1,5 +1,10 @@
 {
-  "user": "admin",
-  "action": "release",
-  "environment": "production"
+  "gold_passed": true,
+  "release_digest": "sha256:abcdef123456",
+  "expected_digest": "sha256:abcdef123456",
+  "requester": "alice",
+  "approver": "bob",
+  "signature": {
+    "verified": true
+  }
 }
