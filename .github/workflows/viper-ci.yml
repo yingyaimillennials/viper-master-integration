@@ -88,6 +88,22 @@ jobs:
           fi
           sha256sum rego/gold_rules.rego | tee rego-digest.txt
 
+      # 👇 ส่วนที่เพิ่มใหม่: OPA Eval และ Artifact Digest 👇
+      - name: OPA Eval (Policy Decision Verification)
+        run: |
+          # ต้องมีไฟล์ examples/opa_input.json ใน Repo (คุณสร้างไว้แล้ว)
+          opa eval --data rego/gold_rules.rego --input examples/opa_input.json "data.gold_rules.allow_release" > opa-eval-result.json
+          cat opa-eval-result.json
+          # ตรวจสอบว่า Output ถูกต้อง (Fail-closed ถ้าไม่ใช่ true)
+          grep -q "true" opa-eval-result.json || (echo "Policy denied or invalid output" && exit 1)
+
+      - name: Generate Artifact Digest
+        run: |
+          # ผูก Digest ของ Artifacts เพื่อตรวจสอบย้อนหลัง
+          sha256sum rego/gold_rules.rego opa-check.log opa-eval-result.json > artifact-digest.txt
+          cat artifact-digest.txt
+      # 👆 จบส่วนที่เพิ่มใหม่ 👆
+
       - name: Upload compiler evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -96,4 +112,44 @@ jobs:
           path: |
             rego/gold_rules.rego
             opa-check.log
+            opa-eval-result.json
+            artifact-digest.txt
             rego-digest.txt
+          if-no-files-found: warn
+
+  release-gate:
+    name: Release gate (fail-closed)
+    needs: [security-tests, compiler-and-policy]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Scope statement
+        run: |
+          cat > release-scope.txt <<EOF
+          VIPER Master Integration v1.4 - CI Scope
+
+          PROVES: local security tests, DSL compile determinism, OPA syntax, OPA eval decision
+          DOES NOT PROVE: signer identity, independent verification, staging, release authorization
+
+          STATUS:
+          CI_EXECUTION:                 PASS
+          SECURITY_F01_F05:             TESTED_PASS
+          DSL_COMPILE:                  TESTED_PASS
+          OPA_CHECK:                    TESTED_PASS
+          OPA_EVAL:                     TESTED_PASS
+          STAGING_VERIFICATION:         NOT_RUN
+          INDEPENDENT_VERIFICATION:     NOT_RUN
+          RELEASE_AUTHORIZATION:        DENY
+
+          Rule: NO_EVIDENCE -> NO_CLAIM -> NO_TRUST -> NO_RELEASE
+          EOF
+          cat release-scope.txt
+
+      - name: Upload scope
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-scope
+          path: release-scope.txt
+          if-no-files-found: error
