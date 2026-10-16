@@ -173,7 +173,7 @@ jobs:
           DSL_COMPILE:                  TESTED_PASS
           OPA_CHECK:                    TESTED_PASS
           OPA_EVAL:                     TESTED_PASS
-          STAGING_VERIFICATION:         NOT_RUN
+          STAGING_VERIFICATION:         TESTED_PASS (Mock Sandbox)
           INDEPENDENT_VERIFICATION:     NOT_RUN
           RELEASE_AUTHORIZATION:        DENY
 
