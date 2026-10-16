@@ -10,6 +10,7 @@ def parse_dsl(text):
         line = line.strip()
         if not line or line.startswith("#"):
             continue
+        # Match: name when condition
         match = re.match(r"^(\w+)\s+when\s+(.+)$", line)
         if match:
             rules.append({
@@ -23,14 +24,16 @@ def emit_rego(rules, package="gold"):
     lines = [
         "package " + package,
         "",
+        "import rego.v1",  # 👈 เพิ่มส่วนนี้เข้ามาเพื่อให้ใช้ Syntax Rego v1
+        "",
         "default allow := false",
         "",
+        "allow if {",      # 👈 เปลี่ยนให้รวมทุกเงื่อนไขไว้ในบล็อกเดียว (AND)
     ]
     for rule in rules:
-        lines.append("allow if {")
         lines.append("    " + rule["condition"])
-        lines.append("}")
-        lines.append("")
+    lines.append("}")
+    lines.append("")
     return "\n".join(lines)
 
 
