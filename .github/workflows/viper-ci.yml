@@ -13,6 +13,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 env:
   PYTHON_VERSION: "3.12"
@@ -27,19 +28,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           python -m pip install cryptography pytest
-
       - name: Run security test suite
         run: python3 security/test_full.py 2>&1 | tee security-tests.log
-
       - name: Upload security test log
         if: always()
         uses: actions/upload-artifact@v4
@@ -48,18 +45,33 @@ jobs:
           path: security-tests.log
           if-no-files-found: warn
 
-  compiler-and-policy:
-    name: DSL compile + OPA verification
+  security-scan:
+    name: Security Scan (Gitleaks + Semgrep)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          fetch-depth: 0
+      - name: Gitleaks (Secret Leakage)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Semgrep (Python SAST)
+        uses: semgrep/semgrep-action@v1
+        with:
+          config: "p/python,p/owasp-top-ten"
 
+  compiler-and-policy:
+    name: DSL compile + OPA verification
+    runs-on: ubuntu-24.04
+    needs: [security-tests, security-scan]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
-
       - name: Install OPA (pinned)
         run: |
           set -euo pipefail
@@ -69,16 +81,13 @@ jobs:
           fi
           sudo install -m 0755 /tmp/opa /usr/local/bin/opa
           opa version
-
       - name: Compile DSL to Rego
         run: |
           mkdir -p rego
           python3 compiler/dsl_to_rego.py dsl/gold_rules.dsl rego/gold_rules.rego
           cat rego/gold_rules.rego
-
       - name: OPA check
         run: opa check --strict --v1-compatible rego/ | tee opa-check.log
-
       - name: Verify deterministic compile
         run: |
           python3 compiler/dsl_to_rego.py dsl/gold_rules.dsl /tmp/again.rego
@@ -87,18 +96,15 @@ jobs:
             exit 1
           fi
           sha256sum rego/gold_rules.rego | tee rego-digest.txt
-
       - name: OPA Eval (Policy Decision Verification)
         run: |
           opa eval --data rego/gold_rules.rego --input examples/opa_input.json "data.gold.allow" > opa-eval-result.json
           cat opa-eval-result.json
           grep -q "true" opa-eval-result.json || (echo "Policy denied or invalid output" && exit 1)
-
       - name: Generate Artifact Digest
         run: |
           sha256sum rego/gold_rules.rego opa-check.log opa-eval-result.json > artifact-digest.txt
           cat artifact-digest.txt
-
       - name: Upload compiler evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -112,24 +118,58 @@ jobs:
             rego-digest.txt
           if-no-files-found: warn
 
+  staging-deploy:
+    name: Staging Verification (Mock Sandbox)
+    runs-on: ubuntu-24.04
+    needs: [compiler-and-policy]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install OPA (pinned)
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/opa "https://github.com/open-policy-agent/opa/releases/download/${OPA_VERSION}/opa_linux_amd64_static"
+          if [ "${OPA_SHA256}" != "REPLACE_WITH_APPROVED_OPA_SHA256" ]; then
+            echo "${OPA_SHA256}  /tmp/opa" | sha256sum -c -
+          fi
+          sudo install -m 0755 /tmp/opa /usr/local/bin/opa
+          opa version
+      - name: Run Staging Deploy Script
+        run: |
+          chmod +x staging/deploy.sh
+          ./staging/deploy.sh
+      - name: Verify Staging Evidence with OPA
+        run: |
+          opa eval --data rego/staging_rules.rego --input staging-evidence.json "data.staging.allow_staging" > staging-eval-result.json
+          cat staging-eval-result.json
+          grep -q "true" staging-eval-result.json || { echo "Staging verification failed"; exit 1; }
+      - name: Upload Staging Evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-evidence
+          path: |
+            staging-evidence.json
+            staging-eval-result.json
+          if-no-files-found: warn
+
   release-gate:
     name: Release gate (fail-closed)
-    needs: [security-tests, compiler-and-policy]
+    needs: [security-tests, security-scan, compiler-and-policy, staging-deploy]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
       - name: Scope statement
         run: |
           cat > release-scope.txt <<EOF
-          VIPER Master Integration v1.4 - CI Scope
+          VIPER Master Integration v1.5 - CI Scope (honest labeling)
 
-          PROVES: local security tests, DSL compile determinism, OPA syntax, OPA eval decision
-          DOES NOT PROVE: signer identity, independent verification, staging, release authorization
+          PROVES: local security tests, DSL compile determinism, OPA syntax, OPA eval decision, staging health & integration (mock sandbox)
+          DOES NOT PROVE: signer identity, independent verification, release authorization
 
           STATUS:
           CI_EXECUTION:                 PASS
           SECURITY_F01_F05:             TESTED_PASS
+          SECURITY_SCAN:                TESTED_PASS
           DSL_COMPILE:                  TESTED_PASS
           OPA_CHECK:                    TESTED_PASS
           OPA_EVAL:                     TESTED_PASS
@@ -140,7 +180,6 @@ jobs:
           Rule: NO_EVIDENCE -> NO_CLAIM -> NO_TRUST -> NO_RELEASE
           EOF
           cat release-scope.txt
-
       - name: Upload scope
         if: always()
         uses: actions/upload-artifact@v4
