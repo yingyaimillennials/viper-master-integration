@@ -1,0 +1,8 @@
+{
+  "email": "requester@example.com",
+  "public_key": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAnOkHLRoDQw5cvyvBvwXnUDF4YByKltpzJGBBzZanjZk=\n-----END PUBLIC KEY-----\n",
+  "fingerprint": "sha256:f156d6d811821fca3b330941ca814fabb0d34c62ba032b10b2afaa797699eb1e",
+  "challenge_id": "manual",
+  "role": "requester",
+  "evidence_sha256": "9f61348df97f6ac4c433dbd3dec3f61faf5f740b8e951fd8b6d1d2cbd389399d"
+}
